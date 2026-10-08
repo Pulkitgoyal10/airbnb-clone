@@ -1,31 +1,33 @@
-import type { Metadata } from "next";
-import { Inter } from "next/font/google";
-import "./globals.css";
-import { UserProvider } from "@/context/UserContext";
-import { Header } from "@/components/layout/Header";
-import { Footer } from "@/components/layout/Footer";
-import { Toaster } from "sonner";
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import './globals.css';
+import { UserProvider } from '@/context/UserContext';
+import { WishlistProvider } from '@/context/WishlistContext';
+import { Header } from '@/components/layout/Header';
+import { Footer } from '@/components/layout/Footer';
+import { Toaster } from 'sonner';
+import { Suspense } from 'react';
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: "Airbnb Clone",
-  description: "Book unique homes and experiences",
+  title: 'Airbnb | Vacation rentals, cabins, beach houses & more',
+  description: 'Book unique homes and experiences',
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body className={`${inter.className} antialiased`}>
         <UserProvider>
-          <Header />
-          <main className="min-h-screen">{children}</main>
-          <Footer />
-          <Toaster position="top-center" />
+          <WishlistProvider>
+            <Suspense fallback={null}>
+              <Header />
+            </Suspense>
+            <main className="min-h-screen bg-white text-[#222]">{children}</main>
+            <Footer />
+            <Toaster position="bottom-center" toastOptions={{ className: 'airbnb-toast' }} />
+          </WishlistProvider>
         </UserProvider>
       </body>
     </html>

@@ -119,7 +119,12 @@ export const listingsApi = {
       page: number;
       page_size: number;
       has_more: boolean;
-    }>(`/api/listings?${new URLSearchParams(params as any).toString()}`),
+    }>(`/api/listings?${new URLSearchParams(
+      Object.fromEntries(
+        Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')
+          .map(([key, value]) => [key, String(value)]),
+      ),
+    ).toString()}`),
 
   getById: (id: number) =>
     api<{

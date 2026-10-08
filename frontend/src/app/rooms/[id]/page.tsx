@@ -1,350 +1,384 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Star, MapPin, Users, Bed, Bath, Maximize2, Heart, ChevronLeft, ChevronRight, X } from 'lucide-react';
-import { listingsApi, wishlistApi, bookingsApi } from '@/lib/api';
-import { useUser } from '@/context/UserContext';
-import { toast } from 'sonner';
+import {
+  BriefcaseBusiness,
+  CheckCircle2,
+  ChevronRight,
+  CookingPot,
+  Grid2X2,
+  Heart,
+  KeyRound,
+  Map,
+  MessageSquare,
+  Share2,
+  Sparkles,
+  SprayCan,
+  Star,
+  Tag,
+  Wifi,
+  Wind,
+  X,
+} from 'lucide-react';
 import { format } from 'date-fns';
+import { toast } from 'sonner';
+import { listingsApi } from '@/lib/api';
+import { useUser } from '@/context/UserContext';
+import { useWishlist } from '@/context/WishlistContext';
+import { AuthModal } from '@/components/auth-modal';
+import { formatInr, listingImages, type ListingDetail, type Quote } from '@/lib/types';
 
-export default function ListingDetailPage() {
+const amenityIcons: Record<string, typeof Wifi> = {
+  Wifi,
+  Kitchen: CookingPot,
+  'Air conditioning': Wind,
+  Workspace: BriefcaseBusiness,
+  'Dedicated workspace': BriefcaseBusiness,
+};
+
+function isBlocked(date: Date, ranges: Array<{ check_in: string; check_out: string }>) {
+  const day = format(date, 'yyyy-MM-dd');
+  return ranges.some((range) => day >= range.check_in && day < range.check_out);
+}
+
+function CalendarMonth({
+  year,
+  month,
+  checkIn,
+  checkOut,
+  blocked,
+  onSelect,
+}: {
+  year: number;
+  month: number;
+  checkIn: string;
+  checkOut: string;
+  blocked: Array<{ check_in: string; check_out: string }>;
+  onSelect: (iso: string) => void;
+}) {
+  const firstDay = new Date(year, month, 1).getDay();
+  const days = new Date(year, month + 1, 0).getDate();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const name = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(new Date(year, month, 1));
+  return (
+    <div className="flex-1">
+      <h3 className="text-center text-lg font-semibold">{name}</h3>
+      <div className="mt-5 grid grid-cols-7 gap-y-3 text-center text-sm">
+        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+          <div key={`${d}-${i}`} className="text-xs font-medium text-gray-500">
+            {d}
+          </div>
+        ))}
+        {Array.from({ length: firstDay }, (_, i) => (
+          <div key={`e-${i}`} />
+        ))}
+        {Array.from({ length: days }, (_, i) => {
+          const day = i + 1;
+          const date = new Date(year, month, day);
+          const iso = format(date, 'yyyy-MM-dd');
+          const past = date < today;
+          const blockedDay = isBlocked(date, blocked);
+          const selected = iso === checkIn || iso === checkOut;
+          const inRange = checkIn && checkOut && iso > checkIn && iso < checkOut;
+          return (
+            <button
+              key={iso}
+              type="button"
+              disabled={past || blockedDay}
+              onClick={() => onSelect(iso)}
+              className={`mx-auto flex size-9 items-center justify-center rounded-full ${
+                past || blockedDay
+                  ? 'cursor-not-allowed text-gray-300 line-through'
+                  : selected
+                    ? 'bg-[#222] text-white'
+                    : inRange
+                      ? 'bg-gray-100'
+                      : 'hover:border hover:border-black'
+              }`}
+            >
+              {day}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+export default function RoomPage() {
   const params = useParams();
   const router = useRouter();
   const { user } = useUser();
-  const [listing, setListing] = useState<any>(null);
-  const [availability, setAvailability] = useState<any>(null);
-  const [quote, setQuote] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const { isSaved, toggle } = useWishlist();
+  const id = Number(params.id);
+  const [listing, setListing] = useState<ListingDetail | null>(null);
+  const [blocked, setBlocked] = useState<Array<{ check_in: string; check_out: string }>>([]);
+  const [quote, setQuote] = useState<Quote | null>(null);
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
   const [guests, setGuests] = useState(1);
-  const [currentPhoto, setCurrentPhoto] = useState(0);
-  const [isSaved, setIsSaved] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const [auth, setAuth] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const now = new Date();
 
   useEffect(() => {
-    const fetchData = async () => {
+    const load = async () => {
       try {
-        const [listingData, availabilityData] = await Promise.all([
-          listingsApi.getById(Number(params.id)),
-          listingsApi.getAvailability(Number(params.id)),
+        const [listingData, availability] = await Promise.all([
+          listingsApi.getById(id),
+          listingsApi.getAvailability(id),
         ]);
         setListing(listingData);
-        setAvailability(availabilityData);
-      } catch (error) {
+        setBlocked(availability.blocked_ranges);
+      } catch {
         toast.error('Failed to load listing');
         router.push('/');
       } finally {
         setLoading(false);
       }
     };
-    fetchData();
-  }, [params.id, router]);
+    void load();
+  }, [id, router]);
 
   useEffect(() => {
-    if (checkIn && checkOut) {
-      const fetchQuote = async () => {
-        try {
-          const quoteData = await listingsApi.getQuote(
-            Number(params.id),
-            checkIn,
-            checkOut,
-            guests
-          );
-          setQuote(quoteData);
-        } catch (error) {
-          setQuote(null);
-        }
-      };
-      fetchQuote();
-    }
-  }, [checkIn, checkOut, guests, params.id]);
-
-  const toggleWishlist = async () => {
-    if (!user) {
-      toast.error('Please log in to save listings');
+    if (!checkIn || !checkOut) {
+      setQuote(null);
       return;
     }
+    listingsApi
+      .getQuote(id, checkIn, checkOut, guests)
+      .then(setQuote)
+      .catch(() => setQuote(null));
+  }, [id, checkIn, checkOut, guests]);
 
-    try {
-      if (isSaved) {
-        await wishlistApi.remove(Number(params.id));
-        setIsSaved(false);
-        toast.success('Removed from wishlist');
-      } else {
-        await wishlistApi.add(Number(params.id));
-        setIsSaved(true);
-        toast.success('Saved to wishlist');
-      }
-    } catch (error) {
-      toast.error('Failed to update wishlist');
+  const images = useMemo(() => (listing ? listingImages(listing) : []), [listing]);
+
+  const onSelectDate = (iso: string) => {
+    if (!checkIn || checkOut || iso <= checkIn) {
+      setCheckIn(iso);
+      setCheckOut('');
+    } else {
+      setCheckOut(iso);
     }
   };
 
   const handleReserve = () => {
     if (!user) {
-      toast.error('Please log in to book');
+      setAuth(true);
       return;
     }
     if (!checkIn || !checkOut) {
       toast.error('Please select check-in and check-out dates');
       return;
     }
-    router.push(`/book/${params.id}?check_in=${checkIn}&check_out=${checkOut}&guests=${guests}`);
+    router.push(`/book/${id}?check_in=${checkIn}&check_out=${checkOut}&guests=${guests}`);
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-gray-900" />
       </div>
     );
   }
+  if (!listing) return <div className="py-20 text-center">Listing not found</div>;
 
-  if (!listing) {
-    return <div className="min-h-screen flex items-center justify-center">Listing not found</div>;
-  }
-
-  const images = listing.image_urls.length ? listing.image_urls : ['https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1200&q=85'];
-  const blockedDates = availability?.blocked_ranges || [];
+  const saved = isSaved(listing.id);
 
   return (
-    <div className="min-h-screen bg-white">
-      <div className="mx-auto max-w-[1400px] px-5 py-8 md:px-10">
-        {/* Image Gallery */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-8">
-          <div className="md:col-span-2 aspect-square md:aspect-auto rounded-xl overflow-hidden relative">
-            <img
-              src={images[currentPhoto % images.length]}
-              alt={listing.title}
-              className="w-full h-full object-cover"
-            />
-            <button
-              onClick={() => setCurrentPhoto((prev) => (prev - 1 + images.length) % images.length)}
-              className="absolute left-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white hover:bg-gray-100"
-            >
-              <ChevronLeft size={24} />
+    <div className="min-h-screen bg-white px-5 pb-24 text-[#222] md:px-10">
+      <div className="mx-auto max-w-[1280px]">
+        <div className="flex flex-col gap-2 py-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight md:text-5xl">{listing.title}</h1>
+            <p className="mt-3 flex flex-wrap items-center gap-2 text-sm font-medium">
+              <Star size={15} fill="currentColor" /> {listing.avg_rating ? listing.avg_rating.toFixed(2) : 'New'} · {listing.review_count} reviews ·{' '}
+              <span className="underline">{listing.city}, India</span>
+            </p>
+          </div>
+          <div className="flex items-center gap-1">
+            <button className="flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold hover:bg-gray-100">
+              <Share2 size={17} /> Share
             </button>
-            <button
-              onClick={() => setCurrentPhoto((prev) => (prev + 1) % images.length)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white hover:bg-gray-100"
-            >
-              <ChevronRight size={24} />
+            <button onClick={() => void toggle(listing.id)} className="flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold hover:bg-gray-100">
+              <Heart fill={saved ? '#FF385C' : 'none'} color={saved ? '#FF385C' : 'currentColor'} size={17} /> {saved ? 'Saved' : 'Save'}
             </button>
           </div>
-          {images.slice(1, 5).map((img: string, i: number) => (
-            <div key={i} className="aspect-square rounded-xl overflow-hidden hidden md:block">
-              <img src={img} alt="" className="w-full h-full object-cover" />
-            </div>
-          ))}
         </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-          {/* Main Content */}
-          <div className="lg:col-span-2">
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <h1 className="text-3xl font-semibold mb-2">{listing.title}</h1>
-                <div className="flex items-center gap-2 text-sm">
-                  <Star size={16} fill="currentColor" />
-                  <span className="font-semibold">{listing.avg_rating.toFixed(2)}</span>
-                  <span className="text-gray-500">· {listing.review_count} reviews</span>
-                  <span className="text-gray-500">· {listing.city}</span>
-                </div>
-              </div>
-              <button
-                onClick={toggleWishlist}
-                className="flex items-center gap-2 text-sm underline"
-              >
-                <Heart fill={isSaved ? '#FF385C' : 'none'} color={isSaved ? '#FF385C' : 'black'} />
-                {isSaved ? 'Saved' : 'Save'}
-              </button>
-            </div>
-
-            <hr className="my-6" />
-
-            <div className="flex items-center gap-4 mb-6">
-              <div className="w-12 h-12 rounded-full bg-gray-300 flex items-center justify-center">
-                {listing.host?.name[0] || 'H'}
+        <section className="relative mt-5 grid h-[60vh] min-h-[420px] grid-cols-4 grid-rows-2 gap-2 overflow-hidden rounded-2xl" aria-label="Property photos">
+          <img src={images[0]} alt={listing.title} className="col-span-2 row-span-2 h-full w-full object-cover" />
+          {images.slice(1, 5).map((image, index) => (
+            <img key={`${image}-${index}`} src={image} alt={`Property view ${index + 2}`} className="h-full w-full object-cover" />
+          ))}
+          <button onClick={() => setGalleryOpen(true)} className="absolute bottom-5 right-5 flex items-center gap-2 rounded-lg bg-white px-4 py-3 text-sm font-semibold shadow-md">
+            <Grid2X2 size={16} /> Show all photos
+          </button>
+        </section>
+        <div className="mt-10 grid gap-12 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+          <section>
+            <h2 className="text-2xl font-semibold">Entire home in {listing.city}</h2>
+            <p className="mt-2 text-gray-600">
+              {listing.max_guests} guests · {listing.bedrooms} bedrooms · {listing.beds} beds · {listing.bathrooms} baths
+            </p>
+            <div className="my-8 flex items-center gap-4 border-y border-gray-200 py-6">
+              <div className="flex size-14 items-center justify-center overflow-hidden rounded-full bg-[#fce7f3] text-lg font-semibold">
+                {listing.host?.avatar_url ? <img src={listing.host.avatar_url} alt="" className="size-full object-cover" /> : listing.host?.name?.[0] || 'H'}
               </div>
               <div>
                 <p className="font-semibold">Hosted by {listing.host?.name || 'Host'}</p>
-                <p className="text-sm text-gray-500">Superhost · 5 years hosting</p>
+                <p className="text-sm text-gray-600">Superhost · 5 years hosting</p>
+              </div>
+              <Sparkles className="ml-auto" size={24} />
+            </div>
+            <div className="border-b border-gray-200 pb-8">
+              <h3 className="text-xl font-semibold">What this place offers</h3>
+              <div className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2">
+                {listing.amenities.map((label) => {
+                  const Icon = amenityIcons[label] || Wifi;
+                  return (
+                    <div key={label} className="flex items-center gap-4">
+                      <Icon size={22} strokeWidth={1.5} />
+                      <span>{label}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-
-            <hr className="my-6" />
-
-            <div className="space-y-4 mb-6">
-              <div className="flex items-center gap-4">
-                <Users size={24} />
-                <div>
-                  <p className="font-semibold">{listing.max_guests} guests</p>
-                  <p className="text-sm text-gray-500">Maximum capacity</p>
-                </div>
+            <section className="border-b border-gray-200 py-8">
+              <h3 className="text-2xl font-semibold">About this space</h3>
+              <p className="mt-4 max-w-2xl leading-7">{listing.description}</p>
+              <button onClick={() => setAboutOpen(true)} className="mt-4 flex items-center gap-1 font-semibold underline">
+                Show more <ChevronRight className="size-4" />
+              </button>
+            </section>
+            <section className="border-b border-gray-200 py-10">
+              <h3 className="text-2xl font-semibold">Select dates</h3>
+              <p className="mt-2 text-gray-500">{checkIn && checkOut ? `${checkIn} – ${checkOut}` : 'Add your travel dates for exact pricing'}</p>
+              <div className="mt-8 flex flex-col gap-12 md:flex-row">
+                <CalendarMonth year={now.getFullYear()} month={now.getMonth()} checkIn={checkIn} checkOut={checkOut} blocked={blocked} onSelect={onSelectDate} />
+                <CalendarMonth
+                  year={now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear()}
+                  month={(now.getMonth() + 1) % 12}
+                  checkIn={checkIn}
+                  checkOut={checkOut}
+                  blocked={blocked}
+                  onSelect={onSelectDate}
+                />
               </div>
-              <div className="flex items-center gap-4">
-                <Bed size={24} />
-                <div>
-                  <p className="font-semibold">{listing.bedrooms} bedrooms</p>
-                  <p className="text-sm text-gray-500">Comfortable sleeping</p>
-                </div>
+              <div className="mt-8 flex items-center justify-end">
+                <button className="text-sm font-semibold underline" onClick={() => { setCheckIn(''); setCheckOut(''); }}>
+                  Clear dates
+                </button>
               </div>
-              <div className="flex items-center gap-4">
-                <Bath size={24} />
-                <div>
-                  <p className="font-semibold">{listing.bathrooms} bathrooms</p>
-                  <p className="text-sm text-gray-500">Clean facilities</p>
-                </div>
-              </div>
-            </div>
-
-            <hr className="my-6" />
-
-            <div className="mb-6">
-              <h2 className="text-xl font-semibold mb-4">About this place</h2>
-              <p className="text-gray-700 leading-relaxed">{listing.description}</p>
-            </div>
-
-            <hr className="my-6" />
-
-            <div className="mb-6">
-              <h2 className="text-xl font-semibold mb-4">What this place offers</h2>
-              <div className="grid grid-cols-2 gap-4">
-                {listing.amenities.map((amenity: string) => (
-                  <div key={amenity} className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-gray-200" />
-                    <span>{amenity}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <hr className="my-6" />
-
-            <div>
-              <h2 className="text-xl font-semibold mb-4">{listing.reviews.length} reviews</h2>
-              <div className="space-y-4">
-                {listing.reviews.map((review: any) => (
-                  <div key={review.id} className="border-b pb-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center">
-                        {review.reviewer_name[0]}
-                      </div>
+            </section>
+            <section className="py-10">
+              <h3 className="flex items-center gap-2 text-2xl font-semibold">
+                <Star className="size-6" fill="currentColor" /> {listing.avg_rating ? listing.avg_rating.toFixed(2) : 'New'} · {listing.review_count} reviews
+              </h3>
+              <div className="mt-10 grid grid-cols-1 gap-x-16 gap-y-10 md:grid-cols-2">
+                {listing.reviews.map((review) => (
+                  <article key={review.id}>
+                    <div className="flex items-center gap-4">
+                      <div className="flex size-12 items-center justify-center rounded-full bg-gray-200 font-semibold">{review.reviewer_name[0]}</div>
                       <div>
                         <p className="font-semibold">{review.reviewer_name}</p>
-                        <div className="flex items-center gap-1 text-sm">
-                          <Star size={14} fill="currentColor" />
-                          <span>{review.rating}</span>
-                        </div>
+                        <p className="text-sm text-gray-500">{review.created_at.slice(0, 10)}</p>
                       </div>
                     </div>
-                    <p className="text-gray-700">{review.comment}</p>
-                  </div>
+                    <p className="mt-4 text-sm">
+                      {'★'.repeat(review.rating)}
+                    </p>
+                    <p className="mt-2 leading-6">{review.comment}</p>
+                  </article>
                 ))}
               </div>
-            </div>
-          </div>
-
-          {/* Booking Card */}
-          <div className="lg:col-span-1">
-            <div className="sticky top-24 rounded-xl border border-gray-300 shadow-lg p-6">
-              <div className="flex items-baseline justify-between mb-6">
-                <div>
-                  <span className="text-2xl font-semibold">₹{listing.price_per_night.toLocaleString('en-IN')}</span>
-                  <span className="text-gray-500"> night</span>
-                </div>
-                <div className="flex items-center gap-1 text-sm">
-                  <Star size={14} fill="currentColor" />
-                  <span>{listing.avg_rating.toFixed(2)}</span>
-                  <span className="text-gray-500">· {listing.review_count} reviews</span>
-                </div>
+            </section>
+          </section>
+          <aside className="lg:sticky lg:top-24 lg:h-fit">
+            <div className="booking-card bg-white">
+              <div className="flex items-baseline gap-2">
+                <strong className="text-2xl">{formatInr(listing.price_per_night)}</strong>
+                <span>night</span>
               </div>
-
-              <div className="border border-gray-300 rounded-xl overflow-hidden mb-4">
-                <div className="grid grid-cols-2 border-b">
-                  <div className="p-3 border-r">
-                    <label className="block text-xs font-semibold mb-1">CHECK-IN</label>
-                    <input
-                      type="date"
-                      value={checkIn}
-                      onChange={(e) => setCheckIn(e.target.value)}
-                      min={new Date().toISOString().split('T')[0]}
-                      className="w-full text-sm outline-none"
-                    />
-                  </div>
-                  <div className="p-3">
-                    <label className="block text-xs font-semibold mb-1">CHECK-OUT</label>
-                    <input
-                      type="date"
-                      value={checkOut}
-                      onChange={(e) => setCheckOut(e.target.value)}
-                      min={checkIn || new Date().toISOString().split('T')[0]}
-                      className="w-full text-sm outline-none"
-                    />
-                  </div>
+              <div className="mt-6 overflow-hidden rounded-xl border border-gray-400">
+                <div className="grid grid-cols-2 border-b border-gray-400">
+                  <label className="p-3 text-xs font-semibold uppercase">
+                    Check-in
+                    <input type="date" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} className="mt-1 block w-full bg-transparent text-sm font-normal outline-none" />
+                  </label>
+                  <label className="border-l border-gray-400 p-3 text-xs font-semibold uppercase">
+                    Checkout
+                    <input type="date" value={checkOut} onChange={(e) => setCheckOut(e.target.value)} className="mt-1 block w-full bg-transparent text-sm font-normal outline-none" />
+                  </label>
                 </div>
-                <div className="p-3">
-                  <label className="block text-xs font-semibold mb-1">GUESTS</label>
-                  <select
-                    value={guests}
-                    onChange={(e) => setGuests(Number(e.target.value))}
-                    className="w-full text-sm outline-none"
-                  >
+                <label className="block p-3 text-xs font-semibold uppercase">
+                  Guests
+                  <select value={guests} onChange={(e) => setGuests(Number(e.target.value))} className="mt-1 block w-full bg-transparent text-sm font-normal outline-none">
                     {Array.from({ length: listing.max_guests }, (_, i) => (
                       <option key={i + 1} value={i + 1}>
                         {i + 1} guest{i + 1 > 1 ? 's' : ''}
                       </option>
                     ))}
                   </select>
-                </div>
+                </label>
               </div>
-
-              <button
-                onClick={handleReserve}
-                disabled={!checkIn || !checkOut}
-                className="w-full rounded-lg bg-gradient-to-r from-[#E61E4D] to-[#BD1E59] text-white font-semibold py-3 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed mb-4"
-              >
-                Reserve
+              <button onClick={handleReserve} className="gradient-button mt-5 w-full">
+                {checkIn && checkOut ? 'Reserve' : 'Check availability'}
               </button>
-
+              <p className="mt-4 text-center text-sm text-gray-500">You won&apos;t be charged yet</p>
               {quote && (
-                <div className="space-y-3 text-sm">
-                  <div className="flex justify-between">
-                    <span className="underline">₹{listing.price_per_night.toLocaleString('en-IN')} × {quote.nights} nights</span>
-                    <span>₹{quote.subtotal.toLocaleString('en-IN')}</span>
-                  </div>
-                  <div className="flex justify-between">
+                <div className="mt-5 space-y-3 text-sm">
+                  <p className="flex justify-between">
+                    <span className="underline">
+                      {formatInr(quote.nightly)} x {quote.nights} nights
+                    </span>
+                    <span>{formatInr(quote.subtotal)}</span>
+                  </p>
+                  <p className="flex justify-between">
                     <span className="underline">Cleaning fee</span>
-                    <span>₹{quote.cleaning_fee.toLocaleString('en-IN')}</span>
-                  </div>
-                  <div className="flex justify-between">
+                    <span>{formatInr(quote.cleaning_fee)}</span>
+                  </p>
+                  <p className="flex justify-between">
                     <span className="underline">Service fee</span>
-                    <span>₹{quote.service_fee.toLocaleString('en-IN')}</span>
-                  </div>
-                  <hr />
-                  <div className="flex justify-between font-semibold">
+                    <span>{formatInr(quote.service_fee)}</span>
+                  </p>
+                  <p className="flex justify-between border-t pt-4 font-bold">
                     <span>Total</span>
-                    <span>₹{quote.total.toLocaleString('en-IN')}</span>
-                  </div>
-                </div>
-              )}
-
-              {blockedDates.length > 0 && (
-                <div className="mt-4 text-xs text-gray-500">
-                  <p>Blocked dates:</p>
-                  <ul className="mt-1 space-y-1">
-                    {blockedDates.slice(0, 3).map((range: any, i: number) => (
-                      <li key={i}>
-                        {format(new Date(range.check_in), 'MMM dd')} - {format(new Date(range.check_out), 'MMM dd')}
-                      </li>
-                    ))}
-                  </ul>
+                    <span>{formatInr(quote.total)}</span>
+                  </p>
                 </div>
               )}
             </div>
-          </div>
+          </aside>
         </div>
+        {galleryOpen && (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-white p-5 md:p-12">
+            <button onClick={() => setGalleryOpen(false)} className="mb-6 rounded-full border px-4 py-2 font-semibold">
+              Close
+            </button>
+            <div className="mx-auto grid max-w-5xl gap-3 md:grid-cols-2">
+              {images.map((image, index) => (
+                <img key={`${image}-${index}`} src={image} alt={`Gallery photo ${index + 1}`} className="w-full rounded-xl object-cover" />
+              ))}
+            </div>
+          </div>
+        )}
+        {aboutOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4">
+            <div className="relative max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-7 shadow-2xl md:p-9">
+              <button onClick={() => setAboutOpen(false)} className="absolute left-6 top-6 rounded-full p-2 hover:bg-gray-100" aria-label="Close about this space">
+                <X className="size-5" />
+              </button>
+              <h2 className="mb-8 text-3xl font-semibold">About this space</h2>
+              <p className="leading-7">{listing.description}</p>
+            </div>
+          </div>
+        )}
+        {auth && <AuthModal onClose={() => setAuth(false)} />}
       </div>
     </div>
   );

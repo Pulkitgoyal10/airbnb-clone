@@ -1,61 +1,63 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { bookingsApi, listingsApi } from '@/lib/api';
-import { useUser } from '@/context/UserContext';
+import { ArrowLeft, Lock } from 'lucide-react';
 import { toast } from 'sonner';
-import { CreditCard, Lock } from 'lucide-react';
+import { bookingsApi, listingsApi, ApiError } from '@/lib/api';
+import { useUser } from '@/context/UserContext';
+import { AuthModal } from '@/components/auth-modal';
+import { formatInr, listingImages, type ListingDetail, type Quote } from '@/lib/types';
 
-export default function BookingPage() {
+function BookForm() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useUser();
-  const [listing, setListing] = useState<any>(null);
+  const [listing, setListing] = useState<ListingDetail | null>(null);
+  const [quote, setQuote] = useState<Quote | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
-
+  const [auth, setAuth] = useState(false);
   const checkIn = searchParams.get('check_in') || '';
   const checkOut = searchParams.get('check_out') || '';
   const guests = Number(searchParams.get('guests') || '1');
+  const id = Number(params.id);
 
   useEffect(() => {
-    const fetchListing = async () => {
+    const load = async () => {
       try {
-        const data = await listingsApi.getById(Number(params.id));
-        setListing(data);
-      } catch (error) {
+        const listingData = await listingsApi.getById(id);
+        setListing(listingData);
+        if (checkIn && checkOut) {
+          const quoteData = await listingsApi.getQuote(id, checkIn, checkOut, guests);
+          setQuote(quoteData);
+        }
+      } catch {
         toast.error('Failed to load listing');
-        router.push(`/rooms/${params.id}`);
+        router.push(`/rooms/${id}`);
       } finally {
         setLoading(false);
       }
     };
-    fetchListing();
-  }, [params.id, router]);
+    void load();
+  }, [id, checkIn, checkOut, guests, router]);
 
-  const handleConfirmBooking = async () => {
+  const handleConfirm = async () => {
     if (!user) {
-      toast.error('Please log in to book');
+      setAuth(true);
       return;
     }
-
     setProcessing(true);
     try {
-      const booking = await bookingsApi.create(
-        Number(params.id),
-        checkIn,
-        checkOut,
-        guests
-      );
+      const booking = await bookingsApi.create(id, checkIn, checkOut, guests);
       toast.success('Booking confirmed!');
       router.push(`/book/confirmed/${booking.id}`);
-    } catch (error: any) {
-      if (error.code === 'DATES_UNAVAILABLE') {
+    } catch (error) {
+      if (error instanceof ApiError && error.code === 'DATES_UNAVAILABLE') {
         toast.error('These dates are no longer available. Please choose new dates.');
       } else {
-        toast.error(error.detail || 'Failed to create booking');
+        toast.error(error instanceof ApiError ? error.detail : 'Failed to create booking');
       }
     } finally {
       setProcessing(false);
@@ -64,118 +66,97 @@ export default function BookingPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-gray-900" />
       </div>
     );
   }
-
-  if (!listing) {
-    return <div className="min-h-screen flex items-center justify-center">Listing not found</div>;
-  }
+  if (!listing) return null;
+  const image = listingImages(listing)[0];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="mx-auto max-w-[800px] px-5 py-10">
-        <button
-          onClick={() => router.back()}
-          className="mb-6 text-sm underline"
-        >
-          Back
-        </button>
-
-        <h1 className="text-3xl font-semibold mb-8">Confirm and pay</h1>
-
-        <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
-          <div className="flex gap-4 mb-6">
-            <img
-              src={listing.image_urls[0] || 'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1200&q=85'}
-              alt=""
-              className="w-32 h-32 rounded-xl object-cover"
-            />
-            <div>
-              <h2 className="font-semibold text-lg">{listing.title}</h2>
-              <p className="text-gray-500 text-sm">{listing.city}</p>
-              <div className="flex items-center gap-1 mt-2 text-sm">
-                <span className="font-semibold">₹{listing.price_per_night.toLocaleString('en-IN')}</span>
-                <span className="text-gray-500">night</span>
+    <main className="min-h-screen px-6 py-8">
+      <button onClick={() => router.back()} className="flex items-center gap-2 font-semibold">
+        <ArrowLeft size={18} /> Confirm and pay
+      </button>
+      <div className="mx-auto mt-8 grid max-w-6xl gap-10 lg:grid-cols-[1fr_380px]">
+        <section>
+          <h1 className="text-3xl font-semibold">Confirm and pay</h1>
+          <div className="mt-8 border-b pb-7">
+            <h2 className="text-xl font-semibold">Your trip</h2>
+            <p className="mt-4">
+              Dates <span className="float-right">{checkIn} – {checkOut}</span>
+            </p>
+            <p className="mt-3">
+              Guests <span className="float-right">{guests} guest{guests > 1 ? 's' : ''}</span>
+            </p>
+          </div>
+          <div className="mt-7">
+            <h2 className="text-xl font-semibold">Pay with</h2>
+            <div className="mt-5 grid gap-3">
+              <input className="auth-input" placeholder="Card number" />
+              <div className="grid grid-cols-2 gap-3">
+                <input className="auth-input" placeholder="MM / YY" />
+                <input className="auth-input" placeholder="CVV" />
               </div>
+              <input className="auth-input" placeholder="Cardholder name" />
+            </div>
+            <p className="mt-3 flex items-center gap-2 text-xs text-[#555]">
+              <Lock size={12} /> This is a secure demo. No real payment will be processed.
+            </p>
+          </div>
+          <div className="mt-8 border-y py-7">
+            <h2 className="text-xl font-semibold">Cancellation policy</h2>
+            <p className="mt-3 text-sm text-[#555]">Free cancellation before check-in. Cancel before check-in for a partial refund.</p>
+          </div>
+          <button disabled={processing} onClick={handleConfirm} className="gradient-button mt-7 w-full md:w-auto">
+            {processing ? 'Processing…' : <><Lock size={16} /> Confirm and pay</>}
+          </button>
+        </section>
+        <aside className="booking-card h-fit">
+          <div className="flex gap-4">
+            <img src={image} className="size-24 rounded-xl object-cover" alt="" />
+            <div>
+              <b>{listing.title}</b>
+              <p className="mt-1 text-sm text-[#666]">{listing.city} · {listing.avg_rating ? listing.avg_rating.toFixed(2) : 'New'} ★</p>
             </div>
           </div>
-
-          <div className="space-y-3 text-sm">
-            <div className="flex justify-between">
-              <span>Dates</span>
-              <span>{checkIn} - {checkOut}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Guests</span>
-              <span>{guests} guest{guests > 1 ? 's' : ''}</span>
-            </div>
+          <div className="mt-6 border-t pt-5">
+            <h2 className="font-semibold">Price details</h2>
+            {quote ? (
+              <>
+                <p className="mt-4 flex justify-between">
+                  <span>{formatInr(quote.nightly)} x {quote.nights} nights</span>
+                  <span>{formatInr(quote.subtotal)}</span>
+                </p>
+                <p className="mt-3 flex justify-between">
+                  <span>Cleaning fee</span>
+                  <span>{formatInr(quote.cleaning_fee)}</span>
+                </p>
+                <p className="mt-3 flex justify-between">
+                  <span>Service fee</span>
+                  <span>{formatInr(quote.service_fee)}</span>
+                </p>
+                <p className="mt-5 flex justify-between border-t pt-4 font-bold">
+                  <span>Total</span>
+                  <span>{formatInr(quote.total)}</span>
+                </p>
+              </>
+            ) : (
+              <p className="mt-4 text-sm text-[#666]">Select dates to see price details.</p>
+            )}
           </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
-          <h2 className="font-semibold mb-4">Price details</h2>
-          <div className="space-y-3 text-sm">
-            <div className="flex justify-between">
-              <span>₹{listing.price_per_night.toLocaleString('en-IN')} × {(new Date(checkOut).getTime() - new Date(checkIn).getTime()) / (1000 * 60 * 60 * 24)} nights</span>
-              <span>₹{((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / (1000 * 60 * 60 * 24) * listing.price_per_night).toLocaleString('en-IN')}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Cleaning fee</span>
-              <span>₹{listing.cleaning_fee.toLocaleString('en-IN')}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Service fee</span>
-              <span>₹{Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / (1000 * 60 * 60 * 24) * listing.price_per_night * 0.14).toLocaleString('en-IN')}</span>
-            </div>
-            <hr />
-            <div className="flex justify-between font-semibold text-base">
-              <span>Total</span>
-              <span>₹{((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / (1000 * 60 * 60 * 24) * listing.price_per_night + listing.cleaning_fee + Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / (1000 * 60 * 60 * 24) * listing.price_per_night * 0.14)).toLocaleString('en-IN')}</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
-          <h2 className="font-semibold mb-4 flex items-center gap-2">
-            <CreditCard size={20} />
-            Pay with card
-          </h2>
-          <div className="space-y-4">
-            <input
-              type="text"
-              placeholder="Card number"
-              className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-black"
-            />
-            <div className="grid grid-cols-2 gap-4">
-              <input
-                type="text"
-                placeholder="MM / YY"
-                className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-black"
-              />
-              <input
-                type="text"
-                placeholder="CVV"
-                className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-black"
-              />
-            </div>
-          </div>
-          <p className="flex items-center gap-2 text-xs text-gray-500 mt-4">
-            <Lock size={12} />
-            This is a secure demo. No real payment will be processed.
-          </p>
-        </div>
-
-        <button
-          onClick={handleConfirmBooking}
-          disabled={processing}
-          className="w-full rounded-lg bg-gradient-to-r from-[#E61E4D] to-[#BD1E59] text-white font-semibold py-4 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {processing ? 'Processing...' : 'Confirm and pay'}
-        </button>
+        </aside>
       </div>
-    </div>
+      {auth && <AuthModal onClose={() => setAuth(false)} />}
+    </main>
+  );
+}
+
+export default function BookPage() {
+  return (
+    <Suspense fallback={<div className="py-20 text-center">Loading…</div>}>
+      <BookForm />
+    </Suspense>
   );
 }
