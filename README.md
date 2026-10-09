@@ -4,7 +4,7 @@
 
 **A full-stack marketplace to browse, search, book and host stays, modelled on Airbnb's design and booking workflow.**
 
-*Scaler AI Labs · SDE Full-Stack take-home assignment*
+*Evaratus (formerly Scaler AI Labs) · SDE Full-Stack take-home assignment*
 
 <p>
   <a href="https://airbnb-clone-self-delta.vercel.app/"><img src="https://img.shields.io/badge/Live%20Demo-Open%20App-FF385C?style=for-the-badge&logo=vercel&logoColor=white" alt="Live demo" /></a>
@@ -48,7 +48,7 @@
 | **Frontend** | Next.js (App Router) · TypeScript · Tailwind CSS |
 | **Backend** | FastAPI · SQLAlchemy 2.0 · Pydantic v2 |
 | **Database** | SQLite, seeded with demo hosts, guests, listings, reviews and bookings |
-| **Core guarantee** | A booked date can never be double-booked, even under concurrent requests |
+| **Core guarantee** | A booked date can never be double-booked |
 | **Live app** | https://airbnb-clone-self-delta.vercel.app/ |
 | **Live API** | https://airbnb-clone-backend-s4l0.onrender.com |
 
@@ -71,13 +71,13 @@ Open the [live app](https://airbnb-clone-self-delta.vercel.app/) and follow this
 
 ### 🧳 Guest experience
 - **Explore grid** with category tabs, card photo carousels, rating badges and a *Guest favourite* label.
-- **Search** by location, date range and guests from a floating search pill. Filters live in the URL, so results are shareable and the back button works.
-- **Listing detail** with a bento photo gallery, amenities, host info, reviews, a location section and a sticky booking card.
+- **Search** by location, date range and guests from a floating search pill. Search state lives in the URL, so results are shareable and the back button works.
+- **Listing detail** with a bento photo gallery, amenities, host info, a reviews section and a sticky booking card.
 - **Availability calendar** that disables booked days and rejects ranges that cross one.
 - **Transparent pricing:** nightly rate × nights + cleaning fee + service fee.
 - **Booking flow** with a mocked checkout, a confirmation page and **Trips** (Upcoming, Past, Cancelled).
 - **Wishlist** with an animated heart, saved per user.
-- **Toast feedback** for every key action.
+- **Toast feedback** for key actions.
 
 ### 🏠 Host experience
 - **Guest ⇄ host mode** toggle in the header.
@@ -252,9 +252,9 @@ erDiagram
 |---|---|
 | **Double bookings.** Two guests could pick the same dates at the same moment. | Overlap check and insert happen in one transaction; the second request gets `409 DATES_UNAVAILABLE`, which the UI turns into a toast and a *Choose new dates* prompt. |
 | **Back-to-back stays.** A strict date comparison would reject a check-in on another guest's check-out day. | Half-open `[in, out)` ranges, with the same rule in the SQL query and the calendar. |
-| **Search with dates.** Listings with a conflicting booking must disappear, without N+1 queries. | The availability rule runs as a SQL subquery inside the search query. |
+| **Search with dates.** Listings with a conflicting booking must disappear. | The availability rule is applied inside the search query. |
 | **Free-tier hosting.** Render's disk is ephemeral, so the SQLite file resets on every restart. | The app creates tables and seeds demo data on startup when the database is empty. |
-| **CORS between Vercel and Render.** Each Vercel deployment has its own URL, which a fixed allow-list can miss. | Allowed origins come from the `CORS_ORIGINS` environment variable and are set to the production domain. |
+| **CORS between Vercel and Render.** The browser blocks cross-origin calls unless the backend allows the frontend's origin. | Allowed origins come from the `CORS_ORIGINS` environment variable and are set to the production domain. |
 | **Mocked auth with real roles.** The brief allows simplified auth but needs guest vs host. | An `X-User-Id` header plus a persisted `is_host` flag. Owner checks on host endpoints return `403`. |
 | **Wishlist feel.** A heart that waits for the server feels slow. | Optimistic UI updates, rolled back if the request fails. |
 
@@ -274,7 +274,7 @@ Interactive documentation: **[/docs](https://airbnb-clone-backend-s4l0.onrender.
 | Auth | `POST` | `/api/auth/login` | Find or create a user by email or phone (demo only) |
 | Auth | `GET` | `/api/auth/users` | Demo users for the switch-user menu |
 | Auth | `PATCH` | `/api/me/mode` | Toggle guest ⇄ host mode |
-| Listings | `GET` | `/api/listings` | Search, filter, paginate |
+| Listings | `GET` | `/api/listings` | Search and paginate |
 | Listings | `GET` | `/api/listings/{id}` | Detail with host, reviews, ratings |
 | Listings | `GET` | `/api/listings/{id}/availability` | Blocked date ranges |
 | Listings | `POST` | `/api/listings/{id}/quote` | Price breakdown for a date range |
@@ -289,7 +289,7 @@ Interactive documentation: **[/docs](https://airbnb-clone-backend-s4l0.onrender.
 | Host | `POST` `PUT` `DELETE` | `/api/listings`, `/api/listings/{id}` | Create, update, delete (owner only) |
 | System | `GET` | `/health` | Health check |
 
-**Search parameters:** `location`, `category`, `check_in`, `check_out`, `guests`, `min_price`, `max_price`, `bedrooms`, `amenities`, `sort`, `page`, `page_size`.
+**Search parameters:** `location`, `category`, `check_in`, `check_out`, `guests`, `page`, `page_size`. The API also accepts `min_price`, `max_price`, `bedrooms`, `amenities` and `sort`; the filter controls for these are not in the UI yet.
 
 </details>
 
@@ -395,9 +395,9 @@ As permitted by the brief:
 |---|---|
 | Authentication | Mocked. Any email or phone logs in; the user id travels in `X-User-Id`. Guest vs host is real and persisted. |
 | Payments | Mocked checkout, no real processing |
-| Messaging, identity verification | Placeholders |
-| Live map with price pins | Static placeholder |
-| Experiences and Services tabs | Placeholder content |
+| Messaging, identity verification | Placeholders ("Coming soon") |
+| Map | Not included; the location section is a placeholder |
+| Experiences and Services tabs | Limited placeholder content |
 | Google and Apple sign-in | Placeholder buttons |
 
 ---
@@ -410,13 +410,22 @@ As permitted by the brief:
 - SQLite suits a demo. In production I would use PostgreSQL, real authentication (JWT sessions, hashed passwords, OAuth), cloud image storage and rate limiting.
 - The first load after idle is slow because of the free-tier cold start.
 
+**Not included in this version**
+
+- Filter controls for price range, property type and amenities (the API accepts some of these parameters)
+- A UI for submitting a review after a stay (reviews are displayed; the endpoint exists)
+- An interactive or static map
+- Dark mode
+- Full content for the Experiences and Services tabs
+
 ---
 
 ## ✅ Assignment Checklist
 
 | Requirement | Status |
 |---|---|
-| Home grid with search, filters and pagination | ✅ |
+| Home grid with search, category tabs and paginated API | ✅ |
+| Advanced filters (price, property type, amenities) | ⏳ Not included |
 | Listing detail: gallery, amenities, host, reviews, price breakdown | ✅ |
 | Availability calendar with blocked dates | ✅ |
 | Booking flow, My Trips, persistence and date blocking | ✅ |
@@ -424,18 +433,19 @@ As permitted by the brief:
 | Wishlist, toasts, modals, date pickers | ✅ |
 | Seeded users, listings, reviews and bookings | ✅ |
 | Next.js (TypeScript) + FastAPI + SQLite | ✅ |
-| Dark mode, interactive map, cloud image upload | ⏳ Not included |
+| Dark mode, map, cloud image upload (bonus) | ⏳ Not included |
 
 ---
 
 ## 🗺️ Roadmap
 
-- Interactive map with price pins
-- Real authentication (JWT and OAuth)
-- PostgreSQL and cloud image storage
-- Host and guest messaging
-- Review prompts after completed stays
-- Dark mode
+1. Filter modal for price range, property type and amenities
+2. Review submission after a completed stay
+3. Interactive map with price pins
+4. Dark mode
+5. Real authentication (JWT and OAuth)
+6. PostgreSQL and cloud image storage
+7. Host and guest messaging
 
 ---
 
