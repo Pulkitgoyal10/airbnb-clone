@@ -10,6 +10,7 @@ type WishlistContextType = {
   items: ListingSummary[];
   savedIds: Set<number>;
   loading: boolean;
+  mounted: boolean;
   isSaved: (listingId: number) => boolean;
   toggle: (listingId: number, fallbackListing?: Partial<ListingSummary> | any) => Promise<void>;
   refresh: () => Promise<void>;
@@ -21,6 +22,11 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
   const { user } = useUser();
   const [items, setItems] = useState<ListingSummary[]>([]);
   const [loading, setLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const refresh = useCallback(async () => {
     if (!user) {
@@ -120,11 +126,12 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
       items,
       savedIds,
       loading,
-      isSaved: (listingId: number) => savedIds.has(listingId),
+      mounted,
+      isSaved: (listingId: number) => (mounted ? savedIds.has(listingId) : false),
       toggle,
       refresh,
     }),
-    [items, savedIds, loading, toggle, refresh],
+    [items, savedIds, loading, mounted, toggle, refresh],
   );
 
   return <WishlistContext.Provider value={value}>{children}</WishlistContext.Provider>;

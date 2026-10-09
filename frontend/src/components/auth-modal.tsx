@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useUser } from '@/context/UserContext';
+import { AirbnbLogo } from '@/components/layout/AirbnbLogo';
 
 export function AuthModal({ onClose }: { onClose: () => void }) {
   const { login } = useUser();
@@ -36,6 +37,7 @@ export function AuthModal({ onClose }: { onClose: () => void }) {
         </button>
         <div className="border-b border-[#eee] px-8 py-5 text-center font-semibold">Log in or sign up</div>
         <div className="p-8">
+          <AirbnbLogo height={40} className="text-[#FF385C] mb-4" />
           <h2 className="mb-5 text-2xl font-semibold">Welcome to Airbnb</h2>
           <input className="auth-input" aria-label="Email or phone" placeholder="Email or phone" value={emailOrPhone} onChange={(e) => setEmailOrPhone(e.target.value)} />
           <input className="auth-input mt-3" aria-label="Name" placeholder="Name (optional for new accounts)" value={name} onChange={(e) => setName(e.target.value)} />

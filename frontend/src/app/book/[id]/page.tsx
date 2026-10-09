@@ -2,11 +2,13 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { ArrowLeft, CalendarX, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { bookingsApi, listingsApi, ApiError } from '@/lib/api';
 import { useUser } from '@/context/UserContext';
 import { AuthModal } from '@/components/auth-modal';
+import { AirbnbLogo } from '@/components/layout/AirbnbLogo';
 import { formatInr, listingImages, type ListingDetail, type Quote } from '@/lib/types';
 
 function BookForm() {
@@ -84,9 +86,14 @@ function BookForm() {
 
   return (
     <main className="min-h-screen px-6 py-8">
-      <button onClick={() => router.back()} className="flex items-center gap-2 font-semibold">
-        <ArrowLeft size={18} /> Back
-      </button>
+      <div className="mx-auto mb-6 flex max-w-6xl items-center justify-between border-b pb-4">
+        <Link href="/" aria-label="Airbnb home">
+          <AirbnbLogo className="h-7 w-auto text-[#FF385C] sm:h-8" height={32} />
+        </Link>
+        <button onClick={() => router.back()} className="flex items-center gap-2 font-semibold text-sm hover:underline">
+          <ArrowLeft size={18} /> Back
+        </button>
+      </div>
 
       {/* Dates-unavailable inline banner */}
       {datesUnavailable && (

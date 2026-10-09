@@ -7,6 +7,7 @@ import { useUser } from '@/context/UserContext';
 import { toast } from 'sonner';
 import { Check, X, Plus, Trash2, ShieldAlert } from 'lucide-react';
 import Link from 'next/link';
+import { AirbnbLogo } from '@/components/layout/AirbnbLogo';
 
 export const AMENITY_OPTIONS = [
   'Wifi',
@@ -217,8 +218,11 @@ export default function ListingForm({
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="mx-auto max-w-[1200px] px-5 py-10 md:px-8">
-        <div className="flex items-center gap-4 mb-8">
+      <div className="mx-auto max-w-[1200px] px-5 py-6 md:px-8">
+        <div className="flex items-center justify-between mb-8 pb-4 border-b">
+          <Link href="/host" aria-label="Airbnb host home">
+            <AirbnbLogo className="h-7 w-auto text-[#FF385C] sm:h-8" height={32} />
+          </Link>
           <button
             onClick={() => router.back()}
             className="p-2 hover:bg-gray-100 rounded-full"
@@ -226,6 +230,8 @@ export default function ListingForm({
           >
             <X size={24} />
           </button>
+        </div>
+        <div className="flex items-center gap-4 mb-8">
           <h1 className="text-2xl font-semibold">
             {mode === 'create' ? 'Create a new listing' : 'Edit listing'}
           </h1>

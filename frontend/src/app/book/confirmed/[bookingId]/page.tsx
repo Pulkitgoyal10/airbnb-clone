@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { bookingsApi, listingsApi } from '@/lib/api';
+import { AirbnbLogo } from '@/components/layout/AirbnbLogo';
 import { formatInr, listingImages, type Booking, type ListingDetail } from '@/lib/types';
 
 export default function BookingConfirmedPage() {
@@ -30,7 +32,10 @@ export default function BookingConfirmedPage() {
   if (!booking || !listing) return <div className="py-20 text-center">Booking not found</div>;
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-20 text-center">
+    <main className="mx-auto max-w-3xl px-6 py-14 text-center">
+      <Link href="/" aria-label="Airbnb home" className="inline-block mb-6">
+        <AirbnbLogo className="h-8 w-auto text-[#FF385C] mx-auto" height={32} />
+      </Link>
       <div className="mx-auto flex size-20 items-center justify-center rounded-full bg-[#fff0f3] text-4xl text-[#FF385C]">✓</div>
       <h1 className="mt-6 text-3xl font-semibold">Your trip is confirmed</h1>
       <p className="mt-3 text-[#666]">Your {listing.city} stay is booked. We&apos;ve sent the details to your email.</p>

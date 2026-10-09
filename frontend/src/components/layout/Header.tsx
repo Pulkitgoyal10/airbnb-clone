@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ChevronDown, CircleUserRound, Globe2, Menu } from 'lucide-react';
@@ -9,6 +9,7 @@ import { useUser } from '@/context/UserContext';
 import { authApi } from '@/lib/api';
 import { AuthModal, LanguageModal } from '@/components/auth-modal';
 import { SearchBar, type Tab } from '@/components/search-bar';
+import { AirbnbLogo } from '@/components/layout/AirbnbLogo';
 
 function ImageCategoryIcon({ type }: { type: Tab }) {
   const sources: Record<Tab, string> = {
@@ -22,6 +23,7 @@ function ImageCategoryIcon({ type }: { type: Tab }) {
 
 export function Header() {
   const { user, loading, toggleHostMode, switchUser, logout } = useUser();
+  const [mounted, setMounted] = useState(false);
   const [menu, setMenu] = useState(false);
   const [auth, setAuth] = useState(false);
   const [language, setLanguage] = useState(false);
@@ -34,6 +36,10 @@ export function Header() {
   const isHome = pathname === '/';
   const hideChrome = pathname.startsWith('/host/listings/new') || pathname.includes('/edit');
   const tab = ((searchParams.get('category') || 'Homes') as Tab);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const fetchUsers = async () => {
     try {
@@ -60,8 +66,12 @@ export function Header() {
   return (
     <header className="sticky top-0 z-30 bg-white/95 text-[#222] backdrop-blur">
       <div className="mx-auto flex max-w-[1400px] items-center justify-between px-5 py-3 md:px-8">
-        <Link href="/" aria-label="Airbnb home" className="text-[22px] font-bold tracking-[-1.2px] text-[#FF385C]">
-          airbnb
+        <Link
+          href={isHostRoute ? '/host' : '/'}
+          aria-label="Airbnb home"
+          className="flex shrink-0 items-center"
+        >
+          <AirbnbLogo className="h-7 w-auto text-[#FF385C] sm:h-8" height={32} />
         </Link>
         {!isHostRoute && (
           <nav className="hidden items-stretch gap-7 md:flex">
@@ -93,7 +103,7 @@ export function Header() {
         <div className="flex items-center gap-1">
           {!isHostRoute && (
             <button className="hidden rounded-full px-4 py-3 text-sm font-semibold hover:bg-[#f7f7f7] lg:block" onClick={() => (user ? handleToggleMode() : setAuth(true))}>
-              {user?.is_host ? 'Switch to hosting' : 'Become a host'}
+              {mounted && user?.is_host ? 'Switch to hosting' : 'Become a host'}
             </button>
           )}
           {isHostRoute && (
@@ -118,7 +128,7 @@ export function Header() {
             >
               <Menu size={18} />
               <span className="flex size-7 items-center justify-center rounded-full bg-[#F7DDF2] text-xs font-semibold">
-                {user ? user.name[0].toUpperCase() : <CircleUserRound />}
+                {mounted && user ? user.name[0].toUpperCase() : <CircleUserRound />}
               </span>
             </button>
             {menu && (

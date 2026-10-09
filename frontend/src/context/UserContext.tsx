@@ -15,6 +15,7 @@ interface User {
 interface UserContextType {
   user: User | null;
   loading: boolean;
+  mounted: boolean;
   login: (emailOrPhone: string, name?: string) => Promise<void>;
   logout: () => void;
   toggleHostMode: (forceHost?: boolean) => Promise<void>;
@@ -27,10 +28,12 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     // Load user from localStorage on mount
-    const savedUserId = localStorage.getItem('userId');
+    const savedUserId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
     if (savedUserId) {
       refreshUser();
     } else {
@@ -78,7 +81,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <UserContext.Provider value={{ user, loading, login, logout, toggleHostMode, switchUser, refreshUser }}>
+    <UserContext.Provider value={{ user, loading, mounted, login, logout, toggleHostMode, switchUser, refreshUser }}>
       {children}
     </UserContext.Provider>
   );

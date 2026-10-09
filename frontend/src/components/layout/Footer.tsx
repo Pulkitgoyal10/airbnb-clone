@@ -1,3 +1,5 @@
+import { AirbnbLogo } from '@/components/layout/AirbnbLogo';
+
 const footerLinks = {
   Support: ['Help Centre', 'AirCover', 'Anti-discrimination', 'Disability support'],
   Hosting: ['Airbnb your home', 'AirCover for Hosts', 'Hosting resources', 'Community forum'],
@@ -21,7 +23,8 @@ export function Footer() {
           </div>
         ))}
       </div>
-      <div className="mx-auto mt-10 flex max-w-[1400px] flex-col items-center gap-4 text-sm text-[#444]">
+      <div className="mx-auto mt-10 flex max-w-[1400px] flex-col items-center gap-3 text-sm text-[#717171]">
+        <AirbnbLogo className="text-[#717171]" height={24} />
         <p>© 2026 Airbnb Clone, Inc.</p>
       </div>
     </footer>
