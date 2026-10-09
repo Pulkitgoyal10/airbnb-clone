@@ -97,9 +97,12 @@ export function Header() {
             </button>
           )}
           {isHostRoute && (
-            <Link href="/" className="hidden rounded-full px-4 py-3 text-sm font-semibold hover:bg-[#f7f7f7] lg:block">
+            <button
+              onClick={handleToggleMode}
+              className="hidden rounded-full px-4 py-3 text-sm font-semibold hover:bg-[#f7f7f7] lg:block"
+            >
               Switch to traveling
-            </Link>
+            </button>
           )}
           <button aria-label="Choose language" onClick={() => setLanguage(true)} className="rounded-full p-3 hover:bg-[#f7f7f7]">
             <Globe2 />
@@ -130,8 +133,30 @@ export function Header() {
                     </div>
                     <Link href="/trips" className="menu-item" onClick={() => setMenu(false)}>Trips</Link>
                     <Link href="/wishlists" className="menu-item" onClick={() => setMenu(false)}>Wishlists</Link>
-                    {user.is_host && (
-                      <Link href="/host" className="menu-item" onClick={() => setMenu(false)}>Host dashboard</Link>
+                    {user.is_host ? (
+                      <>
+                        <Link href="/host" className="menu-item" onClick={() => setMenu(false)}>Host dashboard</Link>
+                        <Link href="/host/listings" className="menu-item" onClick={() => setMenu(false)}>Manage listings</Link>
+                        <button
+                          className="menu-item text-left w-full"
+                          onClick={async () => {
+                            setMenu(false);
+                            await handleToggleMode();
+                          }}
+                        >
+                          Switch to traveling
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        className="menu-item text-left w-full font-medium text-[#FF385C]"
+                        onClick={async () => {
+                          setMenu(false);
+                          await handleToggleMode();
+                        }}
+                      >
+                        Become a host
+                      </button>
                     )}
                     <div className="my-2 border-t border-[#eee]" />
                     <button

@@ -1,4 +1,8 @@
-import { footerLinks } from '@/lib/mock';
+const footerLinks = {
+  Support: ['Help Centre', 'AirCover', 'Anti-discrimination', 'Disability support'],
+  Hosting: ['Airbnb your home', 'AirCover for Hosts', 'Hosting resources', 'Community forum'],
+  Airbnb: ['Newsroom', 'New features', 'Careers', 'Investors'],
+};
 
 export function Footer() {
   return (

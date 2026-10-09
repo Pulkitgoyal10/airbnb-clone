@@ -1,16 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   BriefcaseBusiness,
-  CheckCircle2,
   ChevronRight,
   CookingPot,
   Grid2X2,
   Heart,
-  KeyRound,
-  Map,
   MessageSquare,
   Share2,
   Sparkles,
@@ -23,7 +20,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { listingsApi } from '@/lib/api';
+import { listingsApi, ApiError } from '@/lib/api';
 import { useUser } from '@/context/UserContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { AuthModal } from '@/components/auth-modal';
@@ -37,9 +34,16 @@ const amenityIcons: Record<string, typeof Wifi> = {
   'Dedicated workspace': BriefcaseBusiness,
 };
 
-function isBlocked(date: Date, ranges: Array<{ check_in: string; check_out: string }>) {
-  const day = format(date, 'yyyy-MM-dd');
-  return ranges.some((range) => day >= range.check_in && day < range.check_out);
+type BlockedRange = { check_in: string; check_out: string };
+
+/** Returns true if `day` falls inside a blocked range (check_out day itself is OK to select as check-in). */
+function isDayBlocked(day: string, ranges: BlockedRange[]): boolean {
+  return ranges.some((r) => day >= r.check_in && day < r.check_out);
+}
+
+/** Returns true if the half-open interval [from, to) overlaps any blocked range. */
+function rangeSpansBlocked(from: string, to: string, ranges: BlockedRange[]): boolean {
+  return ranges.some((r) => from < r.check_out && to > r.check_in);
 }
 
 function CalendarMonth({
@@ -54,14 +58,17 @@ function CalendarMonth({
   month: number;
   checkIn: string;
   checkOut: string;
-  blocked: Array<{ check_in: string; check_out: string }>;
+  blocked: BlockedRange[];
   onSelect: (iso: string) => void;
 }) {
   const firstDay = new Date(year, month, 1).getDay();
   const days = new Date(year, month + 1, 0).getDate();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const name = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(new Date(year, month, 1));
+  const name = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(
+    new Date(year, month, 1),
+  );
+
   return (
     <div className="flex-1">
       <h3 className="text-center text-lg font-semibold">{name}</h3>
@@ -79,9 +86,12 @@ function CalendarMonth({
           const date = new Date(year, month, day);
           const iso = format(date, 'yyyy-MM-dd');
           const past = date < today;
-          const blockedDay = isBlocked(date, blocked);
+          // Check-out day of an existing booking IS selectable as a new check-in
+          // isDayBlocked uses day < range.check_out, so check_out is NOT blocked ✓
+          const blockedDay = isDayBlocked(iso, blocked);
           const selected = iso === checkIn || iso === checkOut;
           const inRange = checkIn && checkOut && iso > checkIn && iso < checkOut;
+
           return (
             <button
               key={iso}
@@ -113,17 +123,23 @@ export default function RoomPage() {
   const { user } = useUser();
   const { isSaved, toggle } = useWishlist();
   const id = Number(params.id);
+
   const [listing, setListing] = useState<ListingDetail | null>(null);
-  const [blocked, setBlocked] = useState<Array<{ check_in: string; check_out: string }>>([]);
+  const [blocked, setBlocked] = useState<BlockedRange[]>([]);
   const [quote, setQuote] = useState<Quote | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
   const [guests, setGuests] = useState(1);
+  const [rangeError, setRangeError] = useState('');
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [auth, setAuth] = useState(false);
   const [loading, setLoading] = useState(true);
+
   const now = new Date();
+  // Debounce timer ref
+  const quoteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -144,26 +160,51 @@ export default function RoomPage() {
     void load();
   }, [id, router]);
 
+  // Debounced quote fetch — fires 300 ms after dates/guests settle
   useEffect(() => {
+    if (quoteTimer.current) clearTimeout(quoteTimer.current);
+
     if (!checkIn || !checkOut) {
       setQuote(null);
+      setQuoteLoading(false);
       return;
     }
-    listingsApi
-      .getQuote(id, checkIn, checkOut, guests)
-      .then(setQuote)
-      .catch(() => setQuote(null));
+
+    setQuoteLoading(true);
+    quoteTimer.current = setTimeout(async () => {
+      try {
+        const q = await listingsApi.getQuote(id, checkIn, checkOut, guests);
+        setQuote(q);
+      } catch {
+        setQuote(null);
+      } finally {
+        setQuoteLoading(false);
+      }
+    }, 300);
+
+    return () => {
+      if (quoteTimer.current) clearTimeout(quoteTimer.current);
+    };
   }, [id, checkIn, checkOut, guests]);
 
   const images = useMemo(() => (listing ? listingImages(listing) : []), [listing]);
 
   const onSelectDate = (iso: string) => {
+    // Selecting a start date or resetting
     if (!checkIn || checkOut || iso <= checkIn) {
       setCheckIn(iso);
       setCheckOut('');
-    } else {
-      setCheckOut(iso);
+      setRangeError('');
+      return;
     }
+    // Selecting check-out — validate range doesn't span a blocked date
+    if (rangeSpansBlocked(checkIn, iso, blocked)) {
+      setRangeError('Your selected dates include unavailable nights. Please choose a different range.');
+      setCheckOut('');
+      return;
+    }
+    setRangeError('');
+    setCheckOut(iso);
   };
 
   const handleReserve = () => {
@@ -173,6 +214,10 @@ export default function RoomPage() {
     }
     if (!checkIn || !checkOut) {
       toast.error('Please select check-in and check-out dates');
+      return;
+    }
+    if (rangeError) {
+      toast.error('Please choose valid dates first');
       return;
     }
     router.push(`/book/${id}?check_in=${checkIn}&check_out=${checkOut}&guests=${guests}`);
@@ -196,37 +241,57 @@ export default function RoomPage() {
           <div>
             <h1 className="text-3xl font-semibold tracking-tight md:text-5xl">{listing.title}</h1>
             <p className="mt-3 flex flex-wrap items-center gap-2 text-sm font-medium">
-              <Star size={15} fill="currentColor" /> {listing.avg_rating ? listing.avg_rating.toFixed(2) : 'New'} · {listing.review_count} reviews ·{' '}
-              <span className="underline">{listing.city}, India</span>
+              <Star size={15} fill="currentColor" /> {listing.avg_rating ? listing.avg_rating.toFixed(2) : 'New'} ·{' '}
+              {listing.review_count} reviews · <span className="underline">{listing.city}, India</span>
             </p>
           </div>
           <div className="flex items-center gap-1">
             <button className="flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold hover:bg-gray-100">
               <Share2 size={17} /> Share
             </button>
-            <button onClick={() => void toggle(listing.id)} className="flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold hover:bg-gray-100">
-              <Heart fill={saved ? '#FF385C' : 'none'} color={saved ? '#FF385C' : 'currentColor'} size={17} /> {saved ? 'Saved' : 'Save'}
+            <button
+              onClick={() => void toggle(listing.id, listing)}
+              className="flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold hover:bg-gray-100"
+            >
+              <Heart fill={saved ? '#FF385C' : 'none'} color={saved ? '#FF385C' : 'currentColor'} size={17} />{' '}
+              {saved ? 'Saved' : 'Save'}
             </button>
           </div>
         </div>
-        <section className="relative mt-5 grid h-[60vh] min-h-[420px] grid-cols-4 grid-rows-2 gap-2 overflow-hidden rounded-2xl" aria-label="Property photos">
+
+        {/* Photo grid */}
+        <section
+          className="relative mt-5 grid h-[60vh] min-h-[420px] grid-cols-4 grid-rows-2 gap-2 overflow-hidden rounded-2xl"
+          aria-label="Property photos"
+        >
           <img src={images[0]} alt={listing.title} className="col-span-2 row-span-2 h-full w-full object-cover" />
           {images.slice(1, 5).map((image, index) => (
             <img key={`${image}-${index}`} src={image} alt={`Property view ${index + 2}`} className="h-full w-full object-cover" />
           ))}
-          <button onClick={() => setGalleryOpen(true)} className="absolute bottom-5 right-5 flex items-center gap-2 rounded-lg bg-white px-4 py-3 text-sm font-semibold shadow-md">
+          <button
+            onClick={() => setGalleryOpen(true)}
+            className="absolute bottom-5 right-5 flex items-center gap-2 rounded-lg bg-white px-4 py-3 text-sm font-semibold shadow-md"
+          >
             <Grid2X2 size={16} /> Show all photos
           </button>
         </section>
+
         <div className="mt-10 grid gap-12 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
           <section>
             <h2 className="text-2xl font-semibold">Entire home in {listing.city}</h2>
             <p className="mt-2 text-gray-600">
-              {listing.max_guests} guests · {listing.bedrooms} bedrooms · {listing.beds} beds · {listing.bathrooms} baths
+              {listing.max_guests} guests · {listing.bedrooms} bedrooms · {listing.beds} beds · {listing.bathrooms}{' '}
+              baths
             </p>
+
+            {/* Host strip */}
             <div className="my-8 flex items-center gap-4 border-y border-gray-200 py-6">
               <div className="flex size-14 items-center justify-center overflow-hidden rounded-full bg-[#fce7f3] text-lg font-semibold">
-                {listing.host?.avatar_url ? <img src={listing.host.avatar_url} alt="" className="size-full object-cover" /> : listing.host?.name?.[0] || 'H'}
+                {listing.host?.avatar_url ? (
+                  <img src={listing.host.avatar_url} alt="" className="size-full object-cover" />
+                ) : (
+                  listing.host?.name?.[0] || 'H'
+                )}
               </div>
               <div>
                 <p className="font-semibold">Hosted by {listing.host?.name || 'Host'}</p>
@@ -234,6 +299,8 @@ export default function RoomPage() {
               </div>
               <Sparkles className="ml-auto" size={24} />
             </div>
+
+            {/* Amenities */}
             <div className="border-b border-gray-200 pb-8">
               <h3 className="text-xl font-semibold">What this place offers</h3>
               <div className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2">
@@ -248,6 +315,8 @@ export default function RoomPage() {
                 })}
               </div>
             </div>
+
+            {/* About */}
             <section className="border-b border-gray-200 py-8">
               <h3 className="text-2xl font-semibold">About this space</h3>
               <p className="mt-4 max-w-2xl leading-7">{listing.description}</p>
@@ -255,11 +324,31 @@ export default function RoomPage() {
                 Show more <ChevronRight className="size-4" />
               </button>
             </section>
+
+            {/* Date picker */}
             <section className="border-b border-gray-200 py-10">
               <h3 className="text-2xl font-semibold">Select dates</h3>
-              <p className="mt-2 text-gray-500">{checkIn && checkOut ? `${checkIn} – ${checkOut}` : 'Add your travel dates for exact pricing'}</p>
+              <p className="mt-2 text-gray-500">
+                {checkIn && checkOut ? `${checkIn} – ${checkOut}` : 'Add your travel dates for exact pricing'}
+              </p>
+
+              {/* Inline range error */}
+              {rangeError && (
+                <div className="mt-3 flex items-center gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+                  <X size={15} className="shrink-0" />
+                  {rangeError}
+                </div>
+              )}
+
               <div className="mt-8 flex flex-col gap-12 md:flex-row">
-                <CalendarMonth year={now.getFullYear()} month={now.getMonth()} checkIn={checkIn} checkOut={checkOut} blocked={blocked} onSelect={onSelectDate} />
+                <CalendarMonth
+                  year={now.getFullYear()}
+                  month={now.getMonth()}
+                  checkIn={checkIn}
+                  checkOut={checkOut}
+                  blocked={blocked}
+                  onSelect={onSelectDate}
+                />
                 <CalendarMonth
                   year={now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear()}
                   month={(now.getMonth() + 1) % 12}
@@ -270,34 +359,47 @@ export default function RoomPage() {
                 />
               </div>
               <div className="mt-8 flex items-center justify-end">
-                <button className="text-sm font-semibold underline" onClick={() => { setCheckIn(''); setCheckOut(''); }}>
+                <button
+                  className="text-sm font-semibold underline"
+                  onClick={() => {
+                    setCheckIn('');
+                    setCheckOut('');
+                    setRangeError('');
+                    setQuote(null);
+                  }}
+                >
                   Clear dates
                 </button>
               </div>
             </section>
+
+            {/* Reviews */}
             <section className="py-10">
               <h3 className="flex items-center gap-2 text-2xl font-semibold">
-                <Star className="size-6" fill="currentColor" /> {listing.avg_rating ? listing.avg_rating.toFixed(2) : 'New'} · {listing.review_count} reviews
+                <Star className="size-6" fill="currentColor" /> {listing.avg_rating ? listing.avg_rating.toFixed(2) : 'New'} ·{' '}
+                {listing.review_count} reviews
               </h3>
               <div className="mt-10 grid grid-cols-1 gap-x-16 gap-y-10 md:grid-cols-2">
                 {listing.reviews.map((review) => (
                   <article key={review.id}>
                     <div className="flex items-center gap-4">
-                      <div className="flex size-12 items-center justify-center rounded-full bg-gray-200 font-semibold">{review.reviewer_name[0]}</div>
+                      <div className="flex size-12 items-center justify-center rounded-full bg-gray-200 font-semibold">
+                        {review.reviewer_name[0]}
+                      </div>
                       <div>
                         <p className="font-semibold">{review.reviewer_name}</p>
                         <p className="text-sm text-gray-500">{review.created_at.slice(0, 10)}</p>
                       </div>
                     </div>
-                    <p className="mt-4 text-sm">
-                      {'★'.repeat(review.rating)}
-                    </p>
+                    <p className="mt-4 text-sm">{'★'.repeat(review.rating)}</p>
                     <p className="mt-2 leading-6">{review.comment}</p>
                   </article>
                 ))}
               </div>
             </section>
           </section>
+
+          {/* Booking card */}
           <aside className="lg:sticky lg:top-24 lg:h-fit">
             <div className="booking-card bg-white">
               <div className="flex items-baseline gap-2">
@@ -308,16 +410,44 @@ export default function RoomPage() {
                 <div className="grid grid-cols-2 border-b border-gray-400">
                   <label className="p-3 text-xs font-semibold uppercase">
                     Check-in
-                    <input type="date" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} className="mt-1 block w-full bg-transparent text-sm font-normal outline-none" />
+                    <input
+                      type="date"
+                      value={checkIn}
+                      onChange={(e) => {
+                        setCheckIn(e.target.value);
+                        setCheckOut('');
+                        setRangeError('');
+                      }}
+                      className="mt-1 block w-full bg-transparent text-sm font-normal outline-none"
+                    />
                   </label>
                   <label className="border-l border-gray-400 p-3 text-xs font-semibold uppercase">
                     Checkout
-                    <input type="date" value={checkOut} onChange={(e) => setCheckOut(e.target.value)} className="mt-1 block w-full bg-transparent text-sm font-normal outline-none" />
+                    <input
+                      type="date"
+                      value={checkOut}
+                      min={checkIn || undefined}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (checkIn && rangeSpansBlocked(checkIn, val, blocked)) {
+                          setRangeError('Your selected dates include unavailable nights. Please choose a different range.');
+                          setCheckOut('');
+                        } else {
+                          setRangeError('');
+                          setCheckOut(val);
+                        }
+                      }}
+                      className="mt-1 block w-full bg-transparent text-sm font-normal outline-none"
+                    />
                   </label>
                 </div>
                 <label className="block p-3 text-xs font-semibold uppercase">
                   Guests
-                  <select value={guests} onChange={(e) => setGuests(Number(e.target.value))} className="mt-1 block w-full bg-transparent text-sm font-normal outline-none">
+                  <select
+                    value={guests}
+                    onChange={(e) => setGuests(Number(e.target.value))}
+                    className="mt-1 block w-full bg-transparent text-sm font-normal outline-none"
+                  >
                     {Array.from({ length: listing.max_guests }, (_, i) => (
                       <option key={i + 1} value={i + 1}>
                         {i + 1} guest{i + 1 > 1 ? 's' : ''}
@@ -330,7 +460,12 @@ export default function RoomPage() {
                 {checkIn && checkOut ? 'Reserve' : 'Check availability'}
               </button>
               <p className="mt-4 text-center text-sm text-gray-500">You won&apos;t be charged yet</p>
-              {quote && (
+
+              {/* Price breakdown */}
+              {quoteLoading && (
+                <p className="mt-4 text-center text-sm text-gray-400">Calculating price…</p>
+              )}
+              {!quoteLoading && quote && (
                 <div className="mt-5 space-y-3 text-sm">
                   <p className="flex justify-between">
                     <span className="underline">
@@ -355,6 +490,8 @@ export default function RoomPage() {
             </div>
           </aside>
         </div>
+
+        {/* Gallery modal */}
         {galleryOpen && (
           <div className="fixed inset-0 z-50 overflow-y-auto bg-white p-5 md:p-12">
             <button onClick={() => setGalleryOpen(false)} className="mb-6 rounded-full border px-4 py-2 font-semibold">
@@ -362,15 +499,26 @@ export default function RoomPage() {
             </button>
             <div className="mx-auto grid max-w-5xl gap-3 md:grid-cols-2">
               {images.map((image, index) => (
-                <img key={`${image}-${index}`} src={image} alt={`Gallery photo ${index + 1}`} className="w-full rounded-xl object-cover" />
+                <img
+                  key={`${image}-${index}`}
+                  src={image}
+                  alt={`Gallery photo ${index + 1}`}
+                  className="w-full rounded-xl object-cover"
+                />
               ))}
             </div>
           </div>
         )}
+
+        {/* About modal */}
         {aboutOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4">
             <div className="relative max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-7 shadow-2xl md:p-9">
-              <button onClick={() => setAboutOpen(false)} className="absolute left-6 top-6 rounded-full p-2 hover:bg-gray-100" aria-label="Close about this space">
+              <button
+                onClick={() => setAboutOpen(false)}
+                className="absolute left-6 top-6 rounded-full p-2 hover:bg-gray-100"
+                aria-label="Close about this space"
+              >
                 <X className="size-5" />
               </button>
               <h2 className="mb-8 text-3xl font-semibold">About this space</h2>
@@ -378,6 +526,7 @@ export default function RoomPage() {
             </div>
           </div>
         )}
+
         {auth && <AuthModal onClose={() => setAuth(false)} />}
       </div>
     </div>

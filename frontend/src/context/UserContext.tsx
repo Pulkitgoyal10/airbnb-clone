@@ -17,7 +17,7 @@ interface UserContextType {
   loading: boolean;
   login: (emailOrPhone: string, name?: string) => Promise<void>;
   logout: () => void;
-  toggleHostMode: () => Promise<void>;
+  toggleHostMode: (forceHost?: boolean) => Promise<void>;
   switchUser: (userId: number) => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -65,9 +65,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('userId');
   };
 
-  const toggleHostMode = async () => {
+  const toggleHostMode = async (forceHost?: boolean) => {
     if (!user) return;
-    const userData = await authApi.updateMode(!user.is_host);
+    const targetMode = forceHost !== undefined ? forceHost : !user.is_host;
+    const userData = await authApi.updateMode(targetMode);
     setUser(userData);
   };
 

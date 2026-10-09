@@ -10,7 +10,7 @@ import { format } from 'date-fns';
 
 export default function HostCalendarPage() {
   const router = useRouter();
-  const { user } = useUser();
+  const { user, loading: userLoading } = useUser();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [listings, setListings] = useState<any[]>([]);
   const [selectedListing, setSelectedListing] = useState<number | null>(null);
@@ -18,12 +18,13 @@ export default function HostCalendarPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchData = async () => {
-      if (!user || !user.is_host) {
-        router.push('/');
-        return;
-      }
+    if (userLoading) return;
+    if (!user || !user.is_host) {
+      router.push('/');
+      return;
+    }
 
+    const fetchData = async () => {
       try {
         const data = await hostApi.getListings();
         setListings(data.items);
@@ -38,14 +39,14 @@ export default function HostCalendarPage() {
       }
     };
     fetchData();
-  }, [user, router]);
+  }, [user, userLoading, router]);
 
   const fetchAvailability = async (listingId: number) => {
     try {
       const data = await listingsApi.getAvailability(listingId);
       setBlockedRanges(data.blocked_ranges);
-    } catch (error) {
-      console.error('Failed to load availability');
+    } catch {
+      toast.error('Failed to load availability');
     }
   };
 

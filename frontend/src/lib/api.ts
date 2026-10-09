@@ -59,7 +59,7 @@ export const authApi = {
     ),
   getMe: () =>
     api<{ id: number; name: string; email: string; is_host: boolean; avatar_url: string | null; created_at: string }>(
-      '/api/me'
+      '/api/auth/me'
     ),
   updateMode: (isHost: boolean) =>
     api<{ id: number; name: string; email: string; is_host: boolean; avatar_url: string | null; created_at: string }>(

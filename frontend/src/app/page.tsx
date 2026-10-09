@@ -4,9 +4,27 @@ import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ListingCard } from '@/components/listing-card';
 import { listingsApi } from '@/lib/api';
-import { originals } from '@/lib/mock';
 import type { ListingSummary } from '@/lib/types';
 import type { Tab } from '@/components/search-bar';
+
+const originals = [
+  {
+    title: 'A stay with a story',
+    image: 'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=900&q=85&sig=1',
+  },
+  {
+    title: 'Find your happy place',
+    image: 'https://images.unsplash.com/photo-1600607688969-a5bfcd646154?auto=format&fit=crop&w=900&q=85&sig=2',
+  },
+  {
+    title: 'Design-led escapes',
+    image: 'https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&w=900&q=85&sig=3',
+  },
+  {
+    title: 'Made for slow mornings',
+    image: 'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=900&q=85&sig=4',
+  },
+];
 
 function Section({ title, items }: { title: string; items: ListingSummary[] }) {
   if (!items.length) return null;
@@ -47,15 +65,6 @@ function HomeContent() {
       cancelled = true;
     };
   }, [tab]);
-
-  if (tab === 'Experiences' || tab === 'Services') {
-    return (
-      <div className="mx-auto max-w-[1400px] px-10 py-20 text-center">
-        <h2 className="text-2xl font-semibold">Coming soon</h2>
-        <p className="mt-3 text-[#717171]">{tab} will be available soon.</p>
-      </div>
-    );
-  }
 
   const byCity = (city: string) => listings.filter((l) => l.city.toLowerCase() === city.toLowerCase());
 

@@ -23,7 +23,7 @@ export function ListingCard({ listing }: { listing: ListingSummary }) {
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              void toggle(listing.id);
+              void toggle(listing.id, listing);
             }}
             className={`heart absolute right-3 top-3 transition-transform active:scale-125 ${saved ? 'saved' : ''}`}
           >

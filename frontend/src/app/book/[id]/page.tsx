@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Lock } from 'lucide-react';
+import { ArrowLeft, CalendarX, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { bookingsApi, listingsApi, ApiError } from '@/lib/api';
 import { useUser } from '@/context/UserContext';
@@ -14,11 +14,15 @@ function BookForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useUser();
+
   const [listing, setListing] = useState<ListingDetail | null>(null);
   const [quote, setQuote] = useState<Quote | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [auth, setAuth] = useState(false);
+  /** Set to true when backend returns 409 DATES_UNAVAILABLE */
+  const [datesUnavailable, setDatesUnavailable] = useState(false);
+
   const checkIn = searchParams.get('check_in') || '';
   const checkOut = searchParams.get('check_out') || '';
   const guests = Number(searchParams.get('guests') || '1');
@@ -49,13 +53,17 @@ function BookForm() {
       return;
     }
     setProcessing(true);
+    setDatesUnavailable(false);
     try {
+      // X-User-Id header is automatically injected by api() from localStorage
       const booking = await bookingsApi.create(id, checkIn, checkOut, guests);
       toast.success('Booking confirmed!');
       router.push(`/book/confirmed/${booking.id}`);
     } catch (error) {
       if (error instanceof ApiError && error.code === 'DATES_UNAVAILABLE') {
-        toast.error('These dates are no longer available. Please choose new dates.');
+        // Show inline "Choose new dates" banner instead of just a toast
+        setDatesUnavailable(true);
+        toast.error('These dates are no longer available.');
       } else {
         toast.error(error instanceof ApiError ? error.detail : 'Failed to create booking');
       }
@@ -77,11 +85,35 @@ function BookForm() {
   return (
     <main className="min-h-screen px-6 py-8">
       <button onClick={() => router.back()} className="flex items-center gap-2 font-semibold">
-        <ArrowLeft size={18} /> Confirm and pay
+        <ArrowLeft size={18} /> Back
       </button>
+
+      {/* Dates-unavailable inline banner */}
+      {datesUnavailable && (
+        <div className="mx-auto mt-6 max-w-6xl rounded-2xl border border-red-200 bg-red-50 p-5">
+          <div className="flex items-start gap-3">
+            <CalendarX size={22} className="mt-0.5 shrink-0 text-red-600" />
+            <div>
+              <p className="font-semibold text-red-700">These dates are no longer available</p>
+              <p className="mt-1 text-sm text-red-600">
+                Someone else booked this listing while you were checking out. Please choose new dates.
+              </p>
+              <button
+                onClick={() => router.push(`/rooms/${id}`)}
+                className="mt-3 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+              >
+                Choose new dates
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mx-auto mt-8 grid max-w-6xl gap-10 lg:grid-cols-[1fr_380px]">
         <section>
           <h1 className="text-3xl font-semibold">Confirm and pay</h1>
+
+          {/* Trip summary */}
           <div className="mt-8 border-b pb-7">
             <h2 className="text-xl font-semibold">Your trip</h2>
             <p className="mt-4">
@@ -91,6 +123,8 @@ function BookForm() {
               Guests <span className="float-right">{guests} guest{guests > 1 ? 's' : ''}</span>
             </p>
           </div>
+
+          {/* Mock card form */}
           <div className="mt-7">
             <h2 className="text-xl font-semibold">Pay with</h2>
             <div className="mt-5 grid gap-3">
@@ -105,20 +139,33 @@ function BookForm() {
               <Lock size={12} /> This is a secure demo. No real payment will be processed.
             </p>
           </div>
+
+          {/* Cancellation policy */}
           <div className="mt-8 border-y py-7">
             <h2 className="text-xl font-semibold">Cancellation policy</h2>
-            <p className="mt-3 text-sm text-[#555]">Free cancellation before check-in. Cancel before check-in for a partial refund.</p>
+            <p className="mt-3 text-sm text-[#555]">
+              Free cancellation before check-in. Cancel before check-in for a partial refund.
+            </p>
           </div>
-          <button disabled={processing} onClick={handleConfirm} className="gradient-button mt-7 w-full md:w-auto">
+
+          <button
+            disabled={processing || datesUnavailable}
+            onClick={handleConfirm}
+            className="gradient-button mt-7 w-full md:w-auto disabled:opacity-50"
+          >
             {processing ? 'Processing…' : <><Lock size={16} /> Confirm and pay</>}
           </button>
         </section>
+
+        {/* Price sidebar */}
         <aside className="booking-card h-fit">
           <div className="flex gap-4">
             <img src={image} className="size-24 rounded-xl object-cover" alt="" />
             <div>
               <b>{listing.title}</b>
-              <p className="mt-1 text-sm text-[#666]">{listing.city} · {listing.avg_rating ? listing.avg_rating.toFixed(2) : 'New'} ★</p>
+              <p className="mt-1 text-sm text-[#666]">
+                {listing.city} · {listing.avg_rating ? listing.avg_rating.toFixed(2) : 'New'} ★
+              </p>
             </div>
           </div>
           <div className="mt-6 border-t pt-5">
@@ -148,6 +195,7 @@ function BookForm() {
           </div>
         </aside>
       </div>
+
       {auth && <AuthModal onClose={() => setAuth(false)} />}
     </main>
   );

@@ -9,6 +9,7 @@ from database import Base, engine
 from core import get_cors_origins, APIError
 from routers import (
     auth_router,
+    me_router,
     bookings_router,
     health_router,
     host_router,
@@ -74,6 +75,7 @@ async def api_error_handler(request: Request, exc: APIError):
 # Include routers
 app.include_router(health_router)
 app.include_router(auth_router)
+app.include_router(me_router)
 app.include_router(listings_router)
 app.include_router(bookings_router)
 app.include_router(wishlist_router)

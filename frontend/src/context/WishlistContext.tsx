@@ -11,7 +11,7 @@ type WishlistContextType = {
   savedIds: Set<number>;
   loading: boolean;
   isSaved: (listingId: number) => boolean;
-  toggle: (listingId: number) => Promise<void>;
+  toggle: (listingId: number, fallbackListing?: Partial<ListingSummary> | any) => Promise<void>;
   refresh: () => Promise<void>;
 };
 
@@ -45,27 +45,74 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
   const savedIds = useMemo(() => new Set(items.map((item) => item.id)), [items]);
 
   const toggle = useCallback(
-    async (listingId: number) => {
+    async (listingId: number, fallbackListing?: Partial<ListingSummary> | any) => {
       if (!user) {
         toast.error('Please log in to save listings');
         return;
       }
+
       const currentlySaved = savedIds.has(listingId);
-      try {
-        if (currentlySaved) {
+      const prevItems = items;
+
+      if (currentlySaved) {
+        // Optimistic remove
+        setItems((prev) => prev.filter((item) => item.id !== listingId));
+        toast.success('Removed from Wishlist');
+
+        try {
           await wishlistApi.remove(listingId);
-          setItems((prev) => prev.filter((item) => item.id !== listingId));
-          toast.success('Removed from Wishlist');
-        } else {
-          const listing = await wishlistApi.add(listingId);
-          setItems((prev) => [...prev.filter((item) => item.id !== listing.id), listing]);
-          toast.success('Saved to Wishlist');
+        } catch {
+          // Revert optimistic update on failure
+          setItems(prevItems);
+          toast.error('Failed to remove from wishlist');
         }
-      } catch {
-        toast.error('Failed to update wishlist');
+      } else {
+        // Optimistic add
+        const optimisticItem: ListingSummary = {
+          id: listingId,
+          host_id: fallbackListing?.host_id ?? 0,
+          title: fallbackListing?.title ?? 'Saved listing',
+          description: fallbackListing?.description ?? '',
+          category: fallbackListing?.category ?? 'Homes',
+          city: fallbackListing?.city ?? '',
+          address: fallbackListing?.address ?? '',
+          price_per_night: fallbackListing?.price_per_night ?? 0,
+          cleaning_fee: fallbackListing?.cleaning_fee ?? 0,
+          amenities: fallbackListing?.amenities ?? [],
+          status: fallbackListing?.status ?? 'published',
+          created_at: fallbackListing?.created_at ?? new Date().toISOString(),
+          avg_rating: fallbackListing?.avg_rating ?? 5.0,
+          review_count: fallbackListing?.review_count ?? 0,
+          guest_favourite: fallbackListing?.guest_favourite ?? false,
+          image_urls: fallbackListing?.image_urls ?? (fallbackListing?.images ?? []),
+          first_image:
+            fallbackListing?.first_image ??
+            fallbackListing?.image_urls?.[0] ??
+            fallbackListing?.images?.[0] ??
+            null,
+          bedrooms: fallbackListing?.bedrooms ?? 1,
+          beds: fallbackListing?.beds ?? 1,
+          bathrooms: fallbackListing?.bathrooms ?? 1,
+          max_guests: fallbackListing?.max_guests ?? 2,
+        };
+
+        setItems((prev) => [...prev.filter((i) => i.id !== listingId), optimisticItem]);
+        toast.success('Saved to Wishlist');
+
+        try {
+          const addedListing = await wishlistApi.add(listingId);
+          // Replace optimistic item with server response
+          setItems((prev) =>
+            prev.map((item) => (item.id === listingId ? (addedListing as unknown as ListingSummary) : item))
+          );
+        } catch {
+          // Revert optimistic update on failure
+          setItems(prevItems);
+          toast.error('Failed to save to wishlist');
+        }
       }
     },
-    [savedIds, user],
+    [items, savedIds, user],
   );
 
   const value = useMemo(

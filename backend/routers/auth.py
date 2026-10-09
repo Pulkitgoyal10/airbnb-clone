@@ -46,3 +46,25 @@ def list_users(
     """Get all demo users for switch user menu."""
     users = get_all_users(db)
     return {"items": users}
+
+
+me_router = APIRouter(prefix="/api/me", tags=["me"])
+
+
+@me_router.get("", response_model=UserMeResponse)
+def get_me_direct(
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> User:
+    """Get current user info via /api/me."""
+    return current_user
+
+
+@me_router.patch("/mode", response_model=UserResponse)
+def update_mode_direct(
+    mode_update: UserModeUpdate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> User:
+    """Toggle host mode for current user via /api/me/mode."""
+    return update_user_mode(db, current_user.id, mode_update.is_host)
+
